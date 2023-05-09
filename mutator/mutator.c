@@ -169,9 +169,6 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   // backup stuff
   memcpy(&kale->cmp_backup, afl->shm.cmp_map, sizeof(struct cmp_map));
 
-  // TODO: DO we need this?  unsigned char* orig_buf = ck_alloc(buf_size);
-  memcpy(orig_buf, buf, buf_size);
-
   *out_buf = ck_alloc(buf_size);
   memcpy(*out_buf, buf, buf_size);
 
