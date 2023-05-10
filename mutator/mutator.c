@@ -160,11 +160,17 @@ u8 kale_has_gradient(Angora* kale, unsigned size){
 }
 
 size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigned char **out_buf, unsigned char *add_buf, size_t add_buf_size, size_t max_size){
-  const int learningRate = 2;
+  int learningRate = 4;
   const int epsilon = 1;
+  const int maxIterations = 400;
+  const int annealingRate = 50;
 
   Angora* kale = (Angora*)udata;
   afl_state_t* afl = kale->afl;
+
+  if(afl->shm.cmp_map == NULL){
+    exit(5115);
+  }
 
   // backup stuff
   memcpy(&kale->cmp_backup, afl->shm.cmp_map, sizeof(struct cmp_map));
@@ -195,6 +201,8 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   memcpy(afl->orig_cmp_map, afl->shm.cmp_map, sizeof(struct cmp_map));
 
   u8 initial_cmp_state = kale_cmplog_is_true(afl->shm.cmp_map, k, i);
+
+  int iterations = 0;  
 
   // Continually calculate gradient until it flips
   while(kale_cmplog_is_true(afl->shm.cmp_map, k, i) == initial_cmp_state){
@@ -247,6 +255,13 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
     // Save the original map
     memcpy(afl->orig_cmp_map, afl->shm.cmp_map, sizeof(struct cmp_map));
+
+    iterations++;
+    if (iterations == maxIterations) goto failure;
+
+    if(annealingRate > 1 && iterations % annealingRate == 0){
+        learningRate /= 2;
+    }
   }
 
   // We are done, we have a new input that will evaluate to true
@@ -255,6 +270,12 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   memcpy(afl->shm.cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
 
   return buf_size;
+
+  failure:
+  memcpy(afl->shm.cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
+  ck_free(*out_buf);
+  *out_buf = NULL;
+  return 0;
 }
 
 void afl_custom_deinit(Angora* kale){
