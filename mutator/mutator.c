@@ -159,8 +159,15 @@ u8 kale_has_gradient(Angora* kale, unsigned size){
   return 0;
 }
 
+unsigned int afl_custom_fuzz_count(void *data, const unsigned char *buf, size_t buf_size){
+  return 1;
+}
+
 size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigned char **out_buf, unsigned char *add_buf, size_t add_buf_size, size_t max_size){
+  printf("\nIteration... ");
   int learningRate = 4;
+  const int modulationWidth = 10;
+  const int modulationThreshold = 5000;
   const int epsilon = 1;
   const int maxIterations = 400;
   const int annealingRate = 50;
@@ -204,11 +211,23 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
   int iterations = 0;  
 
+  int bufIncrement;
+
+  // Modulate the iteration
+  // This is because when fuzzing a certain input most of the gradients are likely 0
+  // We search only every modulationWidth gradients until we find a gradient
+  if(buf_size > modulationThreshold){
+    bufIncrement = modulationWidth;
+  }else{
+    bufIncrement = 1;
+  }
+
   // Continually calculate gradient until it flips
   while(kale_cmplog_is_true(afl->shm.cmp_map, k, i) == initial_cmp_state){
 
     // Calculate gradients of new input
-    for(int j = 0; j < buf_size; j++){
+    for(int j = rand()%modulationWidth; j < buf_size; j += bufIncrement){
+      printf("\rIteration... %d", j);
       memset(afl->shm.cmp_map->headers, 0, sizeof(struct cmp_header) * CMP_MAP_W);
       (*out_buf)[j] += epsilon;
 
@@ -229,14 +248,15 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
       (*out_buf)[j] -= epsilon;
 
+      if(kale->gradients[j]){
+        bufIncrement = 1;
+      }else{
+        bufIncrement = modulationWidth;
+      }
     }
 
     // Make sure there is a gradient
-    if(!kale_has_gradient(kale, buf_size)){
-      ck_free(*out_buf);
-      *out_buf = NULL;
-      return 0;
-    }
+    if(!kale_has_gradient(kale, buf_size)) goto failure;
 
     // Apply gradient descent
     descent:
@@ -262,6 +282,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
     if(annealingRate > 1 && iterations % annealingRate == 0){
         learningRate /= 2;
     }
+
   }
 
   // We are done, we have a new input that will evaluate to true
@@ -269,12 +290,15 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   // Restore original stuff
   memcpy(afl->shm.cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
 
+  printf("\rIteration... Success\n");
   return buf_size;
 
   failure:
   memcpy(afl->shm.cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
   ck_free(*out_buf);
   *out_buf = NULL;
+
+  printf("\rIteration... Failure\n");
   return 0;
 }
 
