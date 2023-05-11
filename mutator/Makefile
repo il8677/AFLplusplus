@@ -6,6 +6,9 @@ TEST_FILE=test1.c
 angora: mutator.c cmp-functions.c
 	$(CC) $(FLAGS) -fPIC -O3 -shared mutator.c cmp-functions.c -o mutator.so 
 
+angora-debug: mutator.c cmp-functions.c
+	$(CC) $(FLAGS) -fPIC -O0 -g -shared mutator.c cmp-functions.c -o mutator.so 
+
 
 test: angora
 	afl-cc $(TEST_FILE) -o test
