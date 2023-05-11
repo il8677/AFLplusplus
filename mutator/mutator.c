@@ -164,7 +164,7 @@ unsigned int afl_custom_fuzz_count(void *data, const unsigned char *buf, size_t 
 }
 
 size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigned char **out_buf, unsigned char *add_buf, size_t add_buf_size, size_t max_size){
-  printf("\nIteration... ");
+  //printf("\nIteration... ");
   int learningRate = 4;
   const int modulationWidth = 10;
   const int modulationThreshold = 5000;
@@ -227,7 +227,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
     // Calculate gradients of new input
     for(int j = rand()%modulationWidth; j < buf_size; j += bufIncrement){
-      printf("\rIteration... %d", j);
+      //printf("\rIteration... %d", j);
       memset(afl->shm.cmp_map->headers, 0, sizeof(struct cmp_header) * CMP_MAP_W);
       (*out_buf)[j] += epsilon;
 
@@ -290,7 +290,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   // Restore original stuff
   memcpy(afl->shm.cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
 
-  printf("\rIteration... Success\n");
+  //printf("\rIteration... Success\n");
   return buf_size;
 
   failure:
@@ -298,7 +298,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   ck_free(*out_buf);
   *out_buf = NULL;
 
-  printf("\rIteration... Failure\n");
+  //printf("\rIteration... Failure\n");
   return 0;
 }
 
