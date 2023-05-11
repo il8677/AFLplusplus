@@ -164,7 +164,6 @@ unsigned int afl_custom_fuzz_count(void *data, const unsigned char *buf, size_t 
 }
 
 size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigned char **out_buf, unsigned char *add_buf, size_t add_buf_size, size_t max_size){
-  exit(0);
   //printf("\nIteration... ");
   int learningRate = 4;
   const int modulationWidth = 10;
