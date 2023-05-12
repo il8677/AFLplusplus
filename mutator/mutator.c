@@ -168,7 +168,7 @@ unsigned int afl_custom_fuzz_count(void *data, const unsigned char *buf, size_t 
 size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigned char **out_buf, unsigned char *add_buf, size_t add_buf_size, size_t max_size){
   //printf("\nIteration... ");
   int learningRate = 4;
-  const int modulationWidth = 10;
+  int modulationWidth = 5;
   const int modulationThreshold = 5000;
   const int epsilon = 1;
   const int maxIterations = 400;
@@ -225,6 +225,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   // This is because when fuzzing a certain input most of the gradients are likely 0
   // We search only every modulationWidth gradients until we find a gradient
   if(buf_size > modulationThreshold){
+    modulationWidth = modulationWidth * (buf_size / modulationThreshold);
     bufIncrement = modulationWidth;
   }else{
     bufIncrement = 1;
