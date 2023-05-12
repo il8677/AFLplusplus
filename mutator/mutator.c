@@ -278,8 +278,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
     if (unlikely(common_fuzz_cmplog_stuff(afl, *out_buf, buf_size))) {
       // TODO: Error handling
-      assert(false);
-      return 0;
+      goto failure;
     }
 
     // Save the original map
