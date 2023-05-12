@@ -1,9 +1,11 @@
 #include <assert.h>
 
 #include <afl-fuzz.h>
+#include <types.h>
+#include <cmplog.h>
+
 #include "cmp-functions.h"
 
-#include <cmplog.h>
 
 // CMP attribute enum
 enum {
@@ -174,6 +176,10 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
   Angora* kale = (Angora*)udata;
   afl_state_t* afl = kale->afl;
+
+  if (unlikely(!afl->orig_cmp_map)) {
+    afl->orig_cmp_map = ck_alloc_nozero(sizeof(struct cmp_map));
+  }
 
   if(afl->shm.cmp_map == NULL){
     exit(5115);
