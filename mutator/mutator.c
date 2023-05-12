@@ -179,6 +179,13 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
     exit(5115);
   }
 
+  // Select a cmplog entry to start with
+  u32 k = kale_choose_random(afl->shm.cmp_map);
+
+  if(k == CMP_MAP_W) return 0;
+
+  u32 i = rand() % (afl->shm.cmp_map->headers[k].hits);
+
   // backup stuff
   memcpy(&kale->cmp_backup, afl->shm.cmp_map, sizeof(struct cmp_map));
 
@@ -189,11 +196,6 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   const unsigned spaceNeeded = buf_size * sizeof(s32);
   afl_realloc((void**)&kale->gradients, spaceNeeded);
   memset(kale->gradients, 0, spaceNeeded);
-
-  // Select a cmplog entry to start with
-  u32 k = kale_choose_random(afl->shm.cmp_map);
-  u32 i = rand() % (afl->shm.cmp_map->headers[k].hits);
-
 
   // Do first cmplog pass
   memset(afl->shm.cmp_map->headers, 0, sizeof(struct cmp_header) * CMP_MAP_W);
