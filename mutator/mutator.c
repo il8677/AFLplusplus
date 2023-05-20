@@ -150,7 +150,6 @@ u32 kale_choose_random(struct cmp_map* cmplog){
     counted++;
   }
 
-  assert(false);
   return CMP_MAP_W;
 }
 
