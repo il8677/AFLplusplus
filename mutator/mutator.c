@@ -166,7 +166,7 @@ unsigned int afl_custom_fuzz_count(void *data, const unsigned char *buf, size_t 
 }
 
 size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigned char **out_buf, unsigned char *add_buf, size_t add_buf_size, size_t max_size){
-  //printf("\nIteration... ");
+  printf("\nIteration... ");
   int learningRate = 4;
   int modulationWidth = 5;
   const int modulationThreshold = 5000;
@@ -233,11 +233,12 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
   // Continually calculate gradient until it flips
   while(kale_cmplog_is_true(afl->shm.cmp_map, k, i) == initial_cmp_state){
-
+    printf("\rIteration... %d", iterations);
     // Calculate gradients of new input
     for(int j = rand()%modulationWidth; j < buf_size; j += bufIncrement){
-      //printf("\rIteration... %d", j);
-      memset(afl->shm.cmp_map->headers, 0, sizeof(struct cmp_header) * CMP_MAP_W);
+      // we only ever use k, so we only need to clear k
+      memset(afl->shm.cmp_map->headers+k, 0, sizeof(struct cmp_header));
+
       (*out_buf)[j] += epsilon;
 
 
@@ -297,16 +298,19 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   success:
   // Restore original stuff
   memcpy(afl->shm.cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
+  memcpy(afl->orig_cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
 
-  //printf("\rIteration... Success\n");
+  printf("\rIteration... Success\n");
   return buf_size;
 
   failure:
   memcpy(afl->shm.cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
+  memcpy(afl->orig_cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
+
   ck_free(*out_buf);
   *out_buf = NULL;
 
-  //printf("\rIteration... Failure\n");
+  printf("\rIteration... Failure\n");
   return 0;
 }
 
