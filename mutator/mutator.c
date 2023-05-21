@@ -36,6 +36,7 @@ Angora* afl_custom_init(afl_state_t* afl, unsigned int seed){
 
     data->afl = afl;
     data->gradients = NULL;
+    data->out_buf = NULL;
 
     srand(seed);
 
@@ -196,8 +197,8 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   // backup stuff
   memcpy(&kale->cmp_backup, afl->shm.cmp_map, sizeof(struct cmp_map));
 
-  *out_buf = kale->out_buf;
   afl_realloc((void**)&kale->out_buf, buf_size);
+  *out_buf = kale->out_buf;
   memcpy(*out_buf, buf, buf_size);
 
   // Reallocate gradients array
