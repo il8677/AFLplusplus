@@ -26,6 +26,8 @@ typedef struct Angora{
   // The gradient of each dy/dx_i for every cmplog entry
   s32* gradients;
 
+  unsigned char* out_buf;
+
   struct cmp_map cmp_backup;
 }Angora;
 
@@ -194,7 +196,8 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   // backup stuff
   memcpy(&kale->cmp_backup, afl->shm.cmp_map, sizeof(struct cmp_map));
 
-  *out_buf = ck_alloc(buf_size);
+  *out_buf = kale->out_buf;
+  afl_realloc((void**)&kale->out_buf, buf_size);
   memcpy(*out_buf, buf, buf_size);
 
   // Reallocate gradients array
@@ -306,7 +309,6 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   memcpy(afl->shm.cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
   memcpy(afl->orig_cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
 
-  ck_free(*out_buf);
   *out_buf = NULL;
 
   printf("\rIteration... Failure\n");
@@ -315,4 +317,5 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
 void afl_custom_deinit(Angora* kale){
   afl_free(kale->gradients);
+  afl_free(kale->out_buf);
 }
