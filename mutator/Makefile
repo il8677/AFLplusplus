@@ -1,14 +1,33 @@
-CC=gcc
-FLAGS=-I ../include
+CC=g++
+CPPCC=g++
+FLAGS=-I ../include -fPIC
+
+MAIN_DEPEN=mutator.o depen map.cpp map.h cmp-functions.o
+MAIN_ARGS= -std=c++20 ./xxhash/xxhash.o -shared mutator.o cmp-functions.o map.cpp -o mutator.so
 
 TEST_FILE=test1.c
 
-angora: mutator.c cmp-functions.c
-	$(CC) $(FLAGS) -fPIC -O3 -shared mutator.c cmp-functions.c -o mutator.so 
+default: angora
+default: FLAGS += -O3
 
-angora-debug: mutator.c cmp-functions.c
-	$(CC) $(FLAGS) -fPIC -O0 -g -shared mutator.c cmp-functions.c -o mutator.so 
+angora: $(MAIN_DEPEN)
+	$(CC) $(FLAGS) $(MAIN_ARGS) 
 
+print: FLAGS += -DDEBUG
+
+debug: FLAGS += -DDEBUG
+debug: FLAGS += -O0
+debug: FLAGS += -g
+debug: angora
+
+cmp-functions.o: cmp-functions.c
+	gcc $(FLAGS) -c cmp-functions.c -o cmp-functions.o
+
+mutator.o: mutator.c 
+	gcc $(FLAGS) -c mutator.c -o mutator.o 
+
+depen:
+	$(MAKE) -C xxhash all
 
 test: angora
 	afl-cc $(TEST_FILE) -o test
@@ -26,5 +45,6 @@ test-debug: test
 	AFL_DEBUG_CHILD=1 AFL_CUSTOM_MUTATOR_ONLY=1 AFL_CUSTOM_MUTATOR_LIBRARY="./mutator.so" gdb --args afl-fuzz -i input -o output -c ./testcmp -m none -- ./test
 
 clean:
-	rm *.so testcmp test
-	rm -rf input output
+	$(RM) *.o
+	$(RM) *.so testcmp test
+	$(RM) -rf input output

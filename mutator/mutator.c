@@ -3,6 +3,8 @@
 #include <afl-fuzz.h>
 #include <types.h>
 #include <cmplog.h>
+#include <xxhash.h>
+#include "map.h"
 
 #include "cmp-functions.h"
 
@@ -34,16 +36,22 @@ typedef struct Angora{
   unsigned char* out_buf;
 
   struct cmp_map cmp_backup;
+
+  XXH64_state_t* hash_state;
+  void* map;
 }Angora;
 
 Angora* afl_custom_init(afl_state_t* afl, unsigned int seed){
     Angora* data = calloc(1, sizeof(Angora));
 
+    data->hash_state = XXH64_createState();
+    data->map = kale_map_create();
     data->afl = afl;
     data->gradients = NULL;
     data->out_buf = NULL;
 
     srand(seed);
+
 
     return data;
 }
@@ -199,6 +207,19 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
   u32 i = rand() % (afl->shm.cmp_map->headers[k].hits);
 
+  XXH64_reset(kale->hash_state, 3389);
+  XXH64_update(kale->hash_state, buf, buf_size);
+  XXH64_update(kale->hash_state, &i, sizeof(u32));
+  XXH64_update(kale->hash_state, &k, sizeof(u32));
+  XXH64_hash_t hash = XXH64_digest(kale->hash_state);
+  size_t size = 0;
+  unsigned char* map_stored_data;
+  if((map_stored_data = kale_map_get(kale->map, hash, &size))){
+    PRINT("Cache hit %lu\n", size);
+    *out_buf = map_stored_data;    
+    return size;
+  }
+
   // backup stuff
   memcpy(&kale->cmp_backup, afl->shm.cmp_map, sizeof(struct cmp_map));
 
@@ -242,7 +263,6 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
   // Continually calculate gradient until it flips
   while(kale_cmplog_is_true(afl->shm.cmp_map, k, i) == initial_cmp_state){
-    PRINT("\rIteration... %d", iterations);
     // Calculate gradients of new input
     for(int j = rand()%modulationWidth; j < buf_size; j += bufIncrement){
       // we only ever use k, so we only need to clear k
@@ -309,6 +329,8 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   memcpy(afl->shm.cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
   memcpy(afl->orig_cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
 
+  kale_map_store(kale->map, hash, *out_buf, buf_size);
+
   PRINT("\rIteration... Success\n");
   return buf_size;
 
@@ -318,11 +340,15 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
   *out_buf = NULL;
 
+  kale_map_store(kale->map, hash, NULL, 0);
+
   PRINT("\rIteration... Failure\n");
   return 0;
 }
 
 void afl_custom_deinit(Angora* kale){
+  kale_map_free(kale->map);
+  XXH64_freeState(kale->hash_state);
   afl_free(kale->gradients);
   afl_free(kale->out_buf);
 }
