@@ -27,7 +27,7 @@ mutator.o: mutator.c
 	gcc $(FLAGS) -c mutator.c -o mutator.o 
 
 depen:
-	$(MAKE) -C xxhash all
+	make -C xxhash all
 
 test: angora
 	afl-cc $(TEST_FILE) -o test
