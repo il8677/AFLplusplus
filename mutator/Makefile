@@ -3,7 +3,7 @@ CPPCC=g++
 FLAGS=-I ../include -fPIC
 
 MAIN_DEPEN=mutator.o depen map.cpp map.h cmp-functions.o
-MAIN_ARGS= -std=c++20 ./xxhash/xxhash.o -shared mutator.o cmp-functions.o map.cpp -o mutator.so
+MAIN_ARGS= -std=c++11 ./xxhash/xxhash.o -shared mutator.o cmp-functions.o map.cpp -o mutator.so
 
 TEST_FILE=test1.c
 

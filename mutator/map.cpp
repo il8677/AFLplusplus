@@ -23,7 +23,7 @@ extern "C" {
     unsigned char* kale_map_get(void* rmap, XXH64_hash_t hash, size_t *outSize){
         MapType* map = (MapType*)rmap;
 
-        if(map->contains(hash)){
+        if(map->find(hash) != map->end()){
             std::vector<unsigned char>* target = &map->at(hash);
             *outSize = target->size();
             return target->data();
