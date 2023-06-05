@@ -57,6 +57,8 @@ Angora* afl_custom_init(afl_state_t* afl, unsigned int seed){
 }
 
 long kale_get_gradient_h(struct cmp_map* prev, struct cmp_map* cur, int k, int i, int h){
+  if (cur->headers[k].hits <= i) return 0;
+
   // Angora the if statement
   int attributes = cur->headers[k].attribute;
   kale_function_info_t f = kale_get_function_from_type(attributes);
