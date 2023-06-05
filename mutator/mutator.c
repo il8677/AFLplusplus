@@ -194,6 +194,10 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   Angora* kale = (Angora*)udata;
   afl_state_t* afl = kale->afl;
 
+  // Reset AFLs timeout
+  u32 timeout_backup = afl->fsrv.exec_tmout;
+  afl->fsrv.exec_tmout = UINT32_MAX;
+
   if (unlikely(!afl->orig_cmp_map)) {
     afl->orig_cmp_map = ck_alloc_nozero(sizeof(struct cmp_map));
   }
@@ -217,7 +221,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   size_t size = 0;
   unsigned char* map_stored_data;
   if((map_stored_data = kale_map_get(kale->map, hash, &size))){
-    PRINT("Cache hit %lu\n", size);
+    PRINT("\nCache hit %lu\n", size);
     *out_buf = map_stored_data;    
     return size;
   }
@@ -332,7 +336,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   memcpy(afl->orig_cmp_map, &kale->cmp_backup, sizeof(struct cmp_map));
 
   kale_map_store(kale->map, hash, *out_buf, buf_size);
-
+  afl->fsrv.exec_tmout = timeout_backup;
   PRINT("\rIteration... Success\n");
   return buf_size;
 
