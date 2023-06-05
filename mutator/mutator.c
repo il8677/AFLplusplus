@@ -56,7 +56,9 @@ Angora* afl_custom_init(afl_state_t* afl, unsigned int seed){
     return data;
 }
 
-long kale_get_gradient_h(struct cmp_map* prev, struct cmp_map* cur, int k, int i, int h){
+// Gets the gradient between a currently calculated cmp log entry and the original cmplog entry
+// k and i are the cmp log entry target and the index of the log
+long kale_get_gradient(struct cmp_map* prev, struct cmp_map* cur, int k, int i, int h){
   if (cur->headers[k].hits <= i) return 0;
 
   // Angora the if statement
@@ -69,26 +71,23 @@ long kale_get_gradient_h(struct cmp_map* prev, struct cmp_map* cur, int k, int i
   return (fprime - f0) / h;
 }
 
-// Gets the gradient between a currently calculated cmp log entry and the original cmplog entry
-// k and i are the cmp log entry target and the index of the log
-long kale_get_gradient(struct cmp_map* prev, struct cmp_map* cur, u32 k, u32 i){
-  kale_get_gradient_h(prev, cur, k, i, 1);
-}
-
 // Returns if a cmplog statement evaluated to true
-int kale_cmplog_is_true(struct cmp_map* cmplog, u32 k, u32 i){
+int kale_cmplog_is_true(struct cmp_map* cmplog, u32 k, u32 i, s64* statement){
   // TODO: 128
   kale_function_info_t statementEvaluator = kale_get_function_from_type(cmplog->headers[k].attribute);
 
-  s64 statement = statementEvaluator.callback(cmplog->log[k][i].v0, cmplog->log[k][i].v1);
+  *statement = statementEvaluator.callback(cmplog->log[k][i].v0, cmplog->log[k][i].v1);
 
-  return statementEvaluator.constraint(statement);
+  PRINT("%llu vs %llu  %ld  %d  %d\n", cmplog->log[k][i].v0, cmplog->log[k][i].v1, *statement, statementEvaluator.constraint(*statement), cmplog->headers[k].hits > i);
+
+  return statementEvaluator.constraint(*statement);
 }
 
 // Returns the index of a false cmplog given an entry in the cmplog, returns u32 max if none
 u32 kale_get_false_entry(struct cmp_map* cmplog, u32 k){
+    s64 fValue;
     for(u32 i = 0; i < cmplog->headers[k].hits; i++){
-      if(!kale_cmplog_is_true(cmplog, k, i)){
+      if(!kale_cmplog_is_true(cmplog, k, i, &fValue)){
         return i;
       }
     }
@@ -171,8 +170,8 @@ u32 kale_choose_random(struct cmp_map* cmplog){
   return CMP_MAP_W;
 }
 
-u8 kale_has_gradient(Angora* kale, unsigned size){
-  for(int i = 0; i < size; i++){
+u8 kale_has_gradient(Angora* kale, unsigned size, int starting, int increment){
+  for(int i = starting; i < size; i += increment){
     if(kale->gradients[i]) return 1;
   }
   return 0;
@@ -182,13 +181,31 @@ unsigned int afl_custom_fuzz_count(void *data, const unsigned char *buf, size_t 
   return 1;
 }
 
+// http://locklessinc.com/articles/sat_arithmetic/
+u8 sat_subu8(u8 x, u8 y)
+{
+	u8 res = x - y;
+	res &= -(res <= x);
+	
+	return res;
+}
+
+s64 clamp(s64 d, s64 min, s64 max) {
+  const s64 t = d < min ? min : d;
+  return t > max ? max : t;
+}
+
 size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigned char **out_buf, unsigned char *add_buf, size_t add_buf_size, size_t max_size){
-  PRINT("\nIteration... ");
-  int learningRate = 4;
+  #ifdef DEBUG
+  int total_execs = 0;
+  int cmplog_missings = 0;
+  #endif
+  PRINT("Iteration...\n");
+  int learningRate = 1;
   int modulationWidth = 5;
   const int modulationThreshold = 5000;
-  const int epsilon = 1;
-  const int maxIterations = 400;
+  const int EPSILON = 1;
+  const int maxIterations = 50;
   const int annealingRate = 50;
 
   Angora* kale = (Angora*)udata;
@@ -221,7 +238,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   size_t size = 0;
   unsigned char* map_stored_data;
   if((map_stored_data = kale_map_get(kale->map, hash, &size))){
-    PRINT("\nCache hit %lu\n", size);
+    PRINT("Cache hit %lu\n", size);
     *out_buf = map_stored_data;    
     return size;
   }
@@ -250,7 +267,8 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   // Save the original map
   memcpy(afl->orig_cmp_map, afl->shm.cmp_map, sizeof(struct cmp_map));
 
-  u8 initial_cmp_state = kale_cmplog_is_true(afl->shm.cmp_map, k, i);
+  s64 fValue;
+  u8 initial_cmp_state = kale_cmplog_is_true(afl->shm.cmp_map, k, i, &fValue);
 
   int iterations = 0;  
 
@@ -267,13 +285,38 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
     modulationWidth = 1;
   }
 
+  // The point where a gradient was found
+  unsigned int save_point = 0;
+
   // Continually calculate gradient until it flips
-  while(kale_cmplog_is_true(afl->shm.cmp_map, k, i) == initial_cmp_state){
+  while(kale_cmplog_is_true(afl->shm.cmp_map, k, i, &fValue) == initial_cmp_state){
+    if(fValue > 64) learningRate = 2;
+    else learningRate = 1;
+
     // Calculate gradients of new input
-    for(int j = rand()%modulationWidth; j < buf_size; j += bufIncrement){
+    int starting = rand()%modulationWidth;
+
+    s32 maxGradient = 0;
+
+    for(int j = starting; j < buf_size; j += bufIncrement){
+      int epsilon = EPSILON;
+      PRINT("%d/%lu                                             \r", j, buf_size);
+
+      bool is_calculating_negative = false;
+      if((*out_buf)[j] == 255) goto calcneg;
+      goto go;
+
+      // If we want we can jump here to try negative epsilon
+      calcneg:
+      if((*out_buf)[j] == 0) continue;
+      epsilon = -EPSILON;
+      is_calculating_negative = true;
+
+      go:
+
       // we only ever use k, so we only need to clear k
       memset(afl->shm.cmp_map->headers+k, 0, sizeof(struct cmp_header));
-
+      
       (*out_buf)[j] += epsilon;
 
 
@@ -283,30 +326,85 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
         return 0;
       }
 
-      // Check if the if statement is no longer present, this could be because the args are equal,
-      // just apply another gradient descent and hope
+      // Check if the if statement is no longer present, this could be because the args are equal
+      // Or because the byte cant change
       if(afl->shm.cmp_map->headers[k].hits != afl->orig_cmp_map->headers[k].hits){
-        goto descent;
+        #ifdef DEBUG
+        total_execs++;
+        cmplog_missings++;
+        #endif
+        kale->gradients[j] = 0;
+        (*out_buf)[j] -= epsilon;
+
+        // Try negative
+        if(!is_calculating_negative) goto calcneg;
+        continue;
       }
 
-      kale->gradients[j] = kale_get_gradient(afl->orig_cmp_map, afl->shm.cmp_map, k, i);
+      kale->gradients[j] = kale_get_gradient(afl->orig_cmp_map, afl->shm.cmp_map, k, i, epsilon);
+      
+      if(kale->gradients[j] && abs(kale->gradients[j]) > abs(maxGradient)){
+        maxGradient = kale->gradients[j];
+      }
 
       (*out_buf)[j] -= epsilon;
+
+      if(kale->gradients[j] && bufIncrement > 1){
+        // Go back and calculate for the previous
+        j -= bufIncrement;
+        save_point = j+1;
+        bufIncrement = 1;
+      }else if (j > save_point){ // Only reset to modulation if we are past the known hot-zone
+        bufIncrement = modulationWidth;
+      }
+
+      #ifdef DEBUG
+      total_execs++;
+      #endif
+    }
+
+    // Make sure there is a gradient
+    if(!maxGradient) {
+      PRINT("NO GRADIENT\n");
+      if(iterations > 1) goto success; // Even though we didn't flip the cmp, maybe its still interesting
+      goto failure;
+    }
+    
+    double scaleFactor = 1.0;
+    if(maxGradient > 32){
+      scaleFactor = 32 / (double)maxGradient;
+      maxGradient = 32;
+    }else if(maxGradient < -32){
+      scaleFactor = -32 / (double)maxGradient;
+      maxGradient = -32;
+    }
+
+    // Apply gradient descent
+    descent:
+    #ifdef DEBUG
+    int gradient_total = 0;
+    unsigned long input_total = 0;
+    for (int ii = 0; ii < buf_size; ii++){
+      input_total += (*out_buf)[ii];
+    }
+
+    for(int ii = starting; ii < buf_size; ii += bufIncrement){
+      gradient_total += kale->gradients[ii];
+    }
+
+    printf("Applying gradient %d/%d, %d, %lu\n", cmplog_missings, total_execs, gradient_total, input_total);
+    #endif
+
+    for(int j = starting; j < buf_size; j += bufIncrement){
+      char direction = initial_cmp_state*-1+(!initial_cmp_state);
+      s64 normalizedGradient = kale->gradients[j] * scaleFactor;
+      (*out_buf)[j] -= normalizedGradient * learningRate * direction;
 
       if(kale->gradients[j]){
         bufIncrement = 1;
       }else{
         bufIncrement = modulationWidth;
       }
-    }
-
-    // Make sure there is a gradient
-    if(!kale_has_gradient(kale, buf_size)) goto failure;
-
-    // Apply gradient descent
-    descent:
-    for(int j = 0; j < buf_size; j++){
-      (*out_buf)[j] += kale->gradients[j] * learningRate;
     }
 
     // Do first cmplog pass
@@ -321,11 +419,12 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
     memcpy(afl->orig_cmp_map, afl->shm.cmp_map, sizeof(struct cmp_map));
 
     iterations++;
-    if (iterations == maxIterations) goto failure;
+    // We did some stuff, so lets go to success, maybe its interesting
+    if (iterations == maxIterations) goto success;
 
-    if(annealingRate > 1 && iterations % annealingRate == 0){
+    /*if(annealingRate > 1 && iterations % annealingRate == 0){
         learningRate /= 2;
-    }
+    }*/
 
   }
 
@@ -337,7 +436,15 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
   kale_map_store(kale->map, hash, *out_buf, buf_size);
   afl->fsrv.exec_tmout = timeout_backup;
-  PRINT("\rIteration... Success\n");
+
+  #ifdef DEBUG
+  unsigned long totalDiff = 0;
+  for(int ii = 0; ii < buf_size; ii++){
+    totalDiff += abs((*out_buf)[ii] - buf[ii]);
+  }
+  #endif
+
+  PRINT("Iteration... Success %d, %lu\n\n", iterations, totalDiff);
   return buf_size;
 
   failure:
@@ -347,8 +454,9 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   *out_buf = NULL;
 
   kale_map_store(kale->map, hash, NULL, 0);
+  afl->fsrv.exec_tmout = timeout_backup;
 
-  PRINT("\rIteration... Failure\n");
+  PRINT("Iteration... Failure %d\n\n", iterations);
   return 0;
 }
 

@@ -14,6 +14,7 @@ angora: $(MAIN_DEPEN)
 	$(CC) $(FLAGS) $(MAIN_ARGS) 
 
 print: FLAGS += -DDEBUG
+print: angora
 
 debug: FLAGS += -DDEBUG
 debug: FLAGS += -O0
