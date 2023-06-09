@@ -399,7 +399,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
     }
 
     // Apply gradient descent
-    descent:
+    descent:;
     #ifdef DEBUG
     int gradient_total = 0;
     unsigned long input_total = 0;
