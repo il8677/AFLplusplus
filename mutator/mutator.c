@@ -495,4 +495,6 @@ void afl_custom_deinit(Angora* kale){
   XXH64_freeState(kale->hash_state);
   afl_free(kale->gradients);
   afl_free(kale->out_buf);
+
+  free(kale);
 }
