@@ -37,6 +37,6 @@ extern "C" {
 
         (*map)[hash] = std::vector<unsigned char>(dataSize);
 
-        memcpy(data, (*map)[hash].data(), dataSize);
+        memcpy((*map)[hash].data(), data, dataSize);
     }
 }

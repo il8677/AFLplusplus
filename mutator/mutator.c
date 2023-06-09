@@ -73,6 +73,7 @@ long kale_get_gradient(struct cmp_map* prev, struct cmp_map* cur, int k, int i, 
 
 // Returns if a cmplog statement evaluated to true
 int kale_cmplog_is_true(struct cmp_map* cmplog, u32 k, u32 i, s64* statement){
+
   // TODO: 128
   kale_function_info_t statementEvaluator = kale_get_function_from_type(cmplog->headers[k].attribute);
 
@@ -83,10 +84,22 @@ int kale_cmplog_is_true(struct cmp_map* cmplog, u32 k, u32 i, s64* statement){
   return statementEvaluator.constraint(*statement);
 }
 
+int kale_cmplog_is_true_or_missing(struct cmp_map* cmplog, u32 k, u32 i, s64* statement, unsigned int attr, bool expected){
+  // if the cmplog entry is missing and its an equality, then we can just assume that its ok
+  if(cmplog->headers[k].hits <= i && !expected &&
+      (attr == 0 || attr == 1)){
+    return !expected;
+  }
+  
+  if(cmplog->headers[k].hits <= i) return expected;
+
+  return kale_cmplog_is_true(cmplog, k, i, statement);
+}
+
 // Returns the index of a false cmplog given an entry in the cmplog, returns u32 max if none
 u32 kale_get_false_entry(struct cmp_map* cmplog, u32 k){
     s64 fValue;
-    for(u32 i = 0; i < cmplog->headers[k].hits; i++){
+    for(u32 i = 0; i < cmplog->headers[k].hits <= i; i++){
       if(!kale_cmplog_is_true(cmplog, k, i, &fValue)){
         return i;
       }
@@ -269,6 +282,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
   s64 fValue;
   u8 initial_cmp_state = kale_cmplog_is_true(afl->shm.cmp_map, k, i, &fValue);
+  unsigned int initial_attr = afl->shm.cmp_map->headers[k].attribute;
 
   int iterations = 0;  
 
@@ -289,8 +303,8 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   unsigned int save_point = 0;
 
   // Continually calculate gradient until it flips
-  while(kale_cmplog_is_true(afl->shm.cmp_map, k, i, &fValue) == initial_cmp_state){
-    if(fValue > 64) learningRate = 2;
+  while(kale_cmplog_is_true_or_missing(afl->shm.cmp_map, k, i, &fValue, initial_attr, initial_cmp_state) == initial_cmp_state){
+    if(abs(fValue) > 64) learningRate = 2;
     else learningRate = 1;
 
     // Calculate gradients of new input
@@ -299,6 +313,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
     s32 maxGradient = 0;
 
     for(int j = starting; j < buf_size; j += bufIncrement){
+      s64 gradientBackup = 0;
       int epsilon = EPSILON;
       PRINT("%d/%lu                                             \r", j, buf_size);
 
@@ -328,12 +343,11 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
 
       // Check if the if statement is no longer present, this could be because the args are equal
       // Or because the byte cant change
-      if(afl->shm.cmp_map->headers[k].hits != afl->orig_cmp_map->headers[k].hits){
+      if(afl->shm.cmp_map->headers[k].hits <= i){
         #ifdef DEBUG
         total_execs++;
         cmplog_missings++;
         #endif
-        kale->gradients[j] = 0;
         (*out_buf)[j] -= epsilon;
 
         // Try negative
@@ -342,6 +356,11 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
       }
 
       kale->gradients[j] = kale_get_gradient(afl->orig_cmp_map, afl->shm.cmp_map, k, i, epsilon);
+
+      if(!kale->gradients[j] && !is_calculating_negative) {
+        (*out_buf)[j] -= epsilon;
+        goto calcneg;
+      }
       
       if(kale->gradients[j] && abs(kale->gradients[j]) > abs(maxGradient)){
         maxGradient = kale->gradients[j];
@@ -414,6 +433,17 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
       // TODO: Error handling
       goto failure;
     }
+
+    /*
+    // if we lose the cmp map, lets just assume its the old cmpmap
+    if(afl->shm.cmp_map->headers[k].hits <= i){
+      iterations += 5;
+      if (iterations == maxIterations) goto success;
+     
+      memcpy(afl->shm.cmp_map, afl->orig_cmp_map, sizeof(struct cmp_map));
+      continue;
+    }
+    */
 
     // Save the original map
     memcpy(afl->orig_cmp_map, afl->shm.cmp_map, sizeof(struct cmp_map));
