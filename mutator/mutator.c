@@ -390,12 +390,13 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
     }
     
     double scaleFactor = 1.0;
-    if(maxGradient > 32){
-      scaleFactor = 32 / (double)maxGradient;
-      maxGradient = 32;
-    }else if(maxGradient < -32){
-      scaleFactor = -32 / (double)maxGradient;
-      maxGradient = -32;
+    const int mmax = iterations%2==0?1:6;
+    if(maxGradient > mmax){
+      scaleFactor = mmax / (double)maxGradient;
+      maxGradient = mmax;
+    }else if(maxGradient < -mmax){
+      scaleFactor = -mmax / (double)maxGradient;
+      maxGradient = -mmax;
     }
 
     // Apply gradient descent
