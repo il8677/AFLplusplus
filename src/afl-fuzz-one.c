@@ -3066,7 +3066,7 @@ retry_splicing:
     if (unlikely(!out_buf)) { PFATAL("alloc"); }
     memcpy(out_buf, in_buf, len);
 
-    goto custom_mutator_stage;
+    goto havoc_stage;
 
   }
 

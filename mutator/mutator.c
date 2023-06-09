@@ -191,7 +191,7 @@ u8 kale_has_gradient(Angora* kale, unsigned size, int starting, int increment){
 }
 
 unsigned int afl_custom_fuzz_count(void *data, const unsigned char *buf, size_t buf_size){
-  return 1;
+  return 4;
 }
 
 // http://locklessinc.com/articles/sat_arithmetic/
