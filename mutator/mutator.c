@@ -88,10 +88,14 @@ int kale_cmplog_is_true_or_missing(struct cmp_map* cmplog, u32 k, u32 i, s64* st
   // if the cmplog entry is missing and its an equality, then we can just assume that its ok
   if(cmplog->headers[k].hits <= i && !expected &&
       (attr == 0 || attr == 1)){
+    PRINT("Missing entry, ending\n");
     return !expected;
   }
   
-  if(cmplog->headers[k].hits <= i) return expected;
+  if(cmplog->headers[k].hits <= i){
+      PRINT("Missing entry, continuing\n");
+      return expected;
+  }
 
   return kale_cmplog_is_true(cmplog, k, i, statement);
 }
@@ -218,7 +222,7 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
   int modulationWidth = 5;
   const int modulationThreshold = 5000;
   const int EPSILON = 1;
-  const int maxIterations = 50;
+  const int maxIterations = 100;
   const int annealingRate = 50;
 
   Angora* kale = (Angora*)udata;
@@ -390,6 +394,14 @@ size_t afl_custom_fuzz(void* udata, unsigned char *buf, size_t buf_size, unsigne
     }
     
     double scaleFactor = 1.0;
+    int upper = 6;
+
+    if(iterations > 90) upper = 1;
+    else if(iterations > 80) upper = 2;
+    else if(iterations > 70) upper = 3;
+    else if(iterations > 60) upper = 4;
+    else if(iterations > 50) upper = 5;
+
     const int mmax = iterations%2==0?1:6;
     if(maxGradient > mmax){
       scaleFactor = mmax / (double)maxGradient;
